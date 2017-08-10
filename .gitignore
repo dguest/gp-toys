@@ -1,0 +1,11 @@
+# common binary types
+*.h5
+*.root
+*.pdf
+*.png
+*.jpg
+
+__pycache__/
+
+# include everything in data
+!data/*
