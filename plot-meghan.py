@@ -23,7 +23,9 @@ def run():
         x, y = get_xy_pts(h5file['Nominal']['mjj_Data_2015_3p57fb'])
 
     valid_x = (x > 1200) & (x < 7000)
-    x, y = x[valid_x], y[valid_x]
+    valid_y = y > 0
+    valid = valid_x & valid_y
+    x, y = x[valid], y[valid]
     yerr = np.sqrt(y)
     xerr = np.diff(x)
 
@@ -64,7 +66,9 @@ class logLike_minuit:
         self.y = y
         self.xerr = xerr
     def __call__(self, Amp, lengthscale, p0, p1, p2):
-        gp = george.GP(Kernel((Amp, lengthscale)), mean=Mean((p0,p1,p2)), fit_mean = True)
+        kernel = Kernel((Amp, lengthscale))
+        mean = Mean((p0,p1,p2))
+        gp = george.GP(kernel, mean=mean, fit_mean = True)
         try:
             gp.compute(self.x, np.sqrt(self.y))
             return -gp.lnlikelihood(self.y)
