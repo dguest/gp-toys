@@ -29,13 +29,6 @@ def run():
     yerr = np.sqrt(y)
     xerr = np.diff(x)
 
-
-    # p_init = [5, 1e3, 1e-1, 5, -5]
-    # Amp, lengthscale, p0, p1, p2 = p_init
-    # kernel = Kernel((Amp, lengthscale))
-    # gp = george.GP(kernel, mean=Mean((p0,p1,p2)), fit_mean = True)
-    # gp.compute(
-
     lnProb = logLike_minuit(x, y, xerr)
     min_likelihood, best_fit_gp = fit_gp_minuit(1, lnProb)
     Amp, lengthscale, p0, p1, p2 = best_fit_gp
