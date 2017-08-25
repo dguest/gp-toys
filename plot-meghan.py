@@ -12,6 +12,7 @@ import george
 def parse_args():
     parser = ArgumentParser(description=__doc__)
     parser.add_argument('input_file')
+    parser.add_argument('-e', '--output-file-extension', default='.pdf')
     return parser.parse_args()
 
 
@@ -41,8 +42,8 @@ def run():
     mu, cov = gp_new.predict(y, t)
     std = np.sqrt(np.diag(cov))
 
-
-    with Canvas('spectrum.pdf') as can:
+    ext = args.output_file_extension
+    with Canvas(f'spectrum{ext}') as can:
         can.ax.errorbar(x, y, yerr=yerr, fmt='.')
         can.ax.set_yscale('log')
         can.ax.plot(t, mu, '-r')
