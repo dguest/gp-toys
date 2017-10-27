@@ -8,6 +8,7 @@ from argparse import ArgumentParser
 from h5py import File
 import numpy as np
 import george
+from george.kernels import MyDijetKernelSimp
 
 def parse_args():
     parser = ArgumentParser(description=__doc__)
@@ -31,10 +32,10 @@ def run():
     xerr = np.diff(x)
 
     lnProb = logLike_minuit(x, y, xerr)
-    min_likelihood, best_fit_gp = fit_gp_minuit(1, lnProb)
-    Amp, lengthscale, p0, p1, p2 = best_fit_gp
+    min_likelihood, best_fit = fit_gp_minuit(1, lnProb)
 
-    kernel_new = Kernel((Amp, lengthscale))
+    kernel_new = get_kernel((best_fit['Amp'], best_fit['lengthscale']))
+    p0, p1, p2 = [best_fit[x] for x in ['p0','p1','p2']]
     gp_new = george.GP(kernel_new, mean=Mean((p0,p1,p2)), fit_mean = True)
 
     gp_new.compute(x, yerr)
@@ -60,7 +61,7 @@ class logLike_minuit:
         self.y = y
         self.xerr = xerr
     def __call__(self, Amp, lengthscale, p0, p1, p2):
-        kernel = Kernel((Amp, lengthscale))
+        kernel = get_kernel((Amp, lengthscale))
         mean = Mean((p0,p1,p2))
         gp = george.GP(kernel, mean=mean, fit_mean = True)
         try:
@@ -75,15 +76,15 @@ def fit_gp_minuit(num, lnprob):
     min_likelihood = np.inf
     best_fit_params = (0, 0, 0, 0, 0)
     for i in range(num):
-        init0 = np.random.random() * 1e10
-        init1 = np.random.random() * 5e5
-        init2 = np.random.random() * 1.
-        init3 = np.random.random() * 1.
-        init4 = np.random.random() * 1.
+        iamp = np.random.random() * 1e10
+        ilengthscale = np.random.random() * 5e5
+        ip0 = np.random.random() * 1.
+        ip1 = np.random.random() * 1.
+        ip2 = np.random.random() * 1.
         m = Minuit(lnprob, throw_nan = False, pedantic = False,
                    print_level = 0, errordef = 0.5,
-                   Amp = init0, lengthscale = init1,
-                   p0 = init2, p1 = init3, p2 = init4,
+                   Amp = iamp, lengthscale = ilengthscale,
+                   p0 = ip0, p1 = ip1, p2 = ip2,
                    error_Amp = 1e1, error_lengthscale = 1e1,
                    error_p0 = 1e-2, error_p1 = 1e-2, error_p2 = 1e-2,
                    limit_Amp = (0.01, 1e15), limit_lengthscale = (100, 1e8),
@@ -92,10 +93,9 @@ def fit_gp_minuit(num, lnprob):
         m.migrad()
         if m.fval < min_likelihood:
             min_likelihood = m.fval
-            best_fit_params = m.args
-    amp, ls, p0, p1, p2 = best_fit_params
+            best_fit_params = m.values
     print("min LL", min_likelihood)
-    print(f'best fit vals: amp {amp:e}, ls {ls:e}, ps {p0} {p1} {p2}')
+    print(f'best fit params {best_fit_params}')
     return min_likelihood, best_fit_params
 
 class Mean():
@@ -108,7 +108,7 @@ class Mean():
         p0, p1, p2 = self.p0, self.p1, self.p2
         return (p0 * (1.-t/sqrts)**p1 * (t/sqrts)**(p2))*np.append(np.diff(t), np.diff(t)[-1])
 
-def Kernel(hyperparams):
+def get_kernel(hyperparams):
     from george.kernels import ExpSquaredKernel
     return hyperparams[0]*ExpSquaredKernel(hyperparams[1])
 
