@@ -37,21 +37,24 @@ def run():
 
 
     lnProb = logLike_minuit(x, y, xerr)
-    min_likelihood, best_fit = fit_gp_minuit(1, lnProb)
+    min_likelihood, best_fit = fit_gp_minuit(3, lnProb)
 
     t = np.linspace(np.min(x), np.max(x), 500)
     fit_pars = [best_fit[x] for x in FIT_PARS]
-    fit_line = Mean(fit_pars).get_value(t)
     with Canvas(f'points{ext}') as can:
         can.ax.errorbar(x, y, yerr=yerr, fmt='.')
-        can.ax.plot(t, fit_line, linestyle='-')
         can.ax.set_yscale('log')
     kargs = {x:y for x, y in best_fit.items() if x not in FIT_PARS}
     kernel_new = get_kernel(**kargs)
+    print(kernel_new.get_parameter_names())
     gp_new = george.GP(kernel_new, mean=Mean(fit_pars), fit_mean = True)
+
 
     gp_new.compute(x, yerr)
     mu, cov = gp_new.predict(y, t)
+    mu_x, cov_x = gp_new.predict(y, x)
+    signif = (y - mu_x) / np.sqrt(np.diag(cov_x) + yerr**2)
+    fit_mean = gp_new.mean.get_value(t)
     std = np.sqrt(np.diag(cov))
 
     ext = args.output_file_extension
@@ -59,9 +62,11 @@ def run():
         can.ax.errorbar(x, y, yerr=yerr, fmt='.')
         can.ax.set_yscale('log')
         can.ax.plot(t, mu, '-r')
+        can.ax.plot(t, fit_mean, '-b')
         can.ax.fill_between(t, mu - std, mu + std,
                             facecolor=(0, 1, 0, 0.5),
                             zorder=5, label='err = 1')
+        can.ratio.plot(x, signif, '.')
 
 # _________________________________________________________________
 # stuff copied from Meghan
@@ -79,7 +84,7 @@ class logLike_minuit:
             gp.compute(self.x, np.sqrt(self.y))
             return -gp.lnlikelihood(self.y, self.xerr)
         except:
-            return 0
+            return np.inf
 
 def fit_gp_minuit(num, lnprob):
     from iminuit import Minuit
@@ -92,7 +97,9 @@ def fit_gp_minuit(num, lnprob):
         'p1': 0.46257148564598083,
         'p2': 0.8901612464370032
     }
-    def bound(par):
+    def bound(par, neg=False):
+        if neg:
+            return (-2.0*guesses[par], 2.0*guesses[par])
         return (guesses[par] * 0.5, guesses[par] * 2.0)
     for i in range(num):
         iamp = np.random.random() * 2*guesses['amp']
@@ -122,12 +129,12 @@ def fit_gp_minuit(num, lnprob):
                    limit_length = (100, 1e8),
                    limit_power = (0.01, 1000),
                    limit_sub = (0.01, 1e6),
-                   limit_p0 = bound('p0'),
-                   limit_p1 = bound('p1'),
-                   limit_p2 = bound('p2'))
+                   limit_p0 = bound('p0', neg=False),
+                   limit_p1 = bound('p1', neg=True),
+                   limit_p2 = bound('p2', neg=True))
         m.migrad()
         print(m.fval)
-        if m.fval < min_likelihood:
+        if m.fval < min_likelihood and m.fval != 0.0:
             min_likelihood = m.fval
             best_fit_params = m.values
     print("min LL", min_likelihood)
@@ -142,7 +149,11 @@ class Mean():
     def get_value(self, t):
         sqrts = 13000.
         p0, p1, p2 = self.p0, self.p1, self.p2
-        return (p0 * (1.-t/sqrts)**p1 * (t/sqrts)**(p2))*np.append(np.diff(t), np.diff(t)[-1])
+        steps = np.append(np.diff(t), np.diff(t)[-1])
+        # print(steps)
+        vals = (p0 * (1.-t/sqrts)**p1 * (t/sqrts)**(p2))*steps
+        # print(vals)
+        return vals
 
 def get_kernel(Amp, decay, length, power, sub):
     return Amp * MyDijetKernelSimp(a = decay, b = length, c = power, d = sub)
@@ -156,20 +167,3 @@ def get_xy_pts(group):
 
 if __name__ == '__main__':
     run()
-# from matplotlib import pyplot
-# pyplot.errorbar(x, y, yerr=yerr_hack, fmt='.', zorder=0)
-# pyplot.fill_between(t, mu - std, mu + std, facecolor=(0, 1, 0, 0.5), zorder=5, label='err = 1')
-# pyplot.plot(t, mu, '-b', linewidth=1, zorder=4)
-
-# pyplot.fill_between(t, mu_crap - std_crap, mu_crap + std_crap, facecolor=(1, 0, 0, 0.5), zorder=5, label='sqrt error')
-# pyplot.plot(t, mu_crap, '-r', linewidth=1, zorder=4)
-# pyplot.legend()
-
-# a = pyplot.gca()
-# a.set_yscale('log')
-# a.set_ylim(10e-3, a.get_ylim()[1])
-
-# pyplot.savefig('test.pdf')
-# pyplot.show()
-
-# input('press any button')
