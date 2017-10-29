@@ -16,32 +16,41 @@ def parse_args():
     parser.add_argument('-e', '--output-file-extension', default='.pdf')
     return parser.parse_args()
 
+FIT_PARS = ['p0','p1','p2']
 
 def run():
     args = parse_args()
+    ext = args.output_file_extension
     from pygp.canvas import Canvas
 
     with File(args.input_file,'r') as h5file:
-        x, y = get_xy_pts(h5file['Nominal']['mjj_Data_2015_3p57fb'])
+        # h5file['Nominal']['mjj_Data_2015_3p57fb']
+        # dijetgamma_g85_2j65 Zprime_mjj_var
+        x, y = get_xy_pts(h5file['dijetgamma_g85_2j65']['Zprime_mjj_var'])
 
-    valid_x = (x > 1200) & (x < 5000)
+    valid_x = (x > 0) & (x < 2000)
     valid_y = y > 0
     valid = valid_x & valid_y
     x, y = x[valid], y[valid]
     yerr = np.sqrt(y)
     xerr = np.diff(x)
 
+
     lnProb = logLike_minuit(x, y, xerr)
     min_likelihood, best_fit = fit_gp_minuit(1, lnProb)
 
-    fit_pars = ['p0','p1','p2']
-    kargs = {x:y for x, y in best_fit.items() if x not in fit_pars}
+    t = np.linspace(np.min(x), np.max(x), 500)
+    fit_pars = [best_fit[x] for x in FIT_PARS]
+    fit_line = Mean(fit_pars).get_value(t)
+    with Canvas(f'points{ext}') as can:
+        can.ax.errorbar(x, y, yerr=yerr, fmt='.')
+        can.ax.plot(t, fit_line, linestyle='-')
+        can.ax.set_yscale('log')
+    kargs = {x:y for x, y in best_fit.items() if x not in FIT_PARS}
     kernel_new = get_kernel(**kargs)
-    p0, p1, p2 = [best_fit[x] for x in fit_pars]
-    gp_new = george.GP(kernel_new, mean=Mean((p0,p1,p2)), fit_mean = True)
+    gp_new = george.GP(kernel_new, mean=Mean(fit_pars), fit_mean = True)
 
     gp_new.compute(x, yerr)
-    t = np.linspace(np.min(x), np.max(x), 500)
     mu, cov = gp_new.predict(y, t)
     std = np.sqrt(np.diag(cov))
 
@@ -77,16 +86,24 @@ def fit_gp_minuit(num, lnprob):
 
     min_likelihood = np.inf
     best_fit_params = (0, 0, 0, 0, 0)
+    guesses = {
+        'amp': 5701461179.0,
+        'p0': 0.2336137363271451,
+        'p1': 0.46257148564598083,
+        'p2': 0.8901612464370032
+    }
+    def bound(par):
+        return (guesses[par] * 0.5, guesses[par] * 2.0)
     for i in range(num):
-        iamp = np.random.random() * 1e10
+        iamp = np.random.random() * 2*guesses['amp']
         idecay = np.random.random() * 0.64
         ilength = np.random.random() * 5e5
         ipower = np.random.random() * 1.0
         isub = np.random.random() * 1.0
-        ip0 = np.random.random() * 1.0
-        ip1 = np.random.random() * 1.0
-        ip2 = np.random.random() * 1.0
-        m = Minuit(lnprob, throw_nan = True, pedantic = False,
+        ip0 = np.random.random() * guesses['p0'] * 2
+        ip1 = np.random.random() * guesses['p1'] * 2
+        ip2 = np.random.random() * guesses['p2'] * 2
+        m = Minuit(lnprob, throw_nan = True, pedantic = True,
                    print_level = 0, errordef = 0.5,
                    Amp = iamp,
                    decay = idecay,
@@ -100,14 +117,14 @@ def fit_gp_minuit(num, lnprob):
                    error_power = 1e1,
                    error_sub = 1e1,
                    error_p0 = 1e-2, error_p1 = 1e-2, error_p2 = 1e-2,
-                   limit_Amp = (0.01, 1e15),
+                   limit_Amp = bound('amp'),
                    limit_decay = (0.01, 1000),
                    limit_length = (100, 1e8),
                    limit_power = (0.01, 1000),
                    limit_sub = (0.01, 1e6),
-                   limit_p0 = (0,10),
-                   limit_p1 = (-2e2, 2e2),
-                   limit_p2 = (-2e2,2e2))
+                   limit_p0 = bound('p0'),
+                   limit_p1 = bound('p1'),
+                   limit_p2 = bound('p2'))
         m.migrad()
         print(m.fval)
         if m.fval < min_likelihood:
