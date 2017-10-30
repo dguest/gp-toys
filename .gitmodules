@@ -1,0 +1,3 @@
+[submodule "george"]
+	path = george
+	url = git@github.com:dguest/george.git
