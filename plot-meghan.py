@@ -54,7 +54,7 @@ def run():
     mu, cov = gp_new.predict(y, t)
     mu_x, cov_x = gp_new.predict(y, x)
     signif = (y - mu_x) / np.sqrt(np.diag(cov_x) + yerr**2)
-    fit_mean = gp_new.mean.get_value(t)
+    fit_mean = gp_new.mean.get_value(x)
     std = np.sqrt(np.diag(cov))
 
     ext = args.output_file_extension
@@ -62,11 +62,12 @@ def run():
         can.ax.errorbar(x, y, yerr=yerr, fmt='.')
         can.ax.set_yscale('log')
         can.ax.plot(t, mu, '-r')
-        can.ax.plot(t, fit_mean, '-b')
+        can.ax.plot(x, fit_mean, '-b')
         can.ax.fill_between(t, mu - std, mu + std,
                             facecolor=(0, 1, 0, 0.5),
                             zorder=5, label='err = 1')
         can.ratio.plot(x, signif, '.')
+        can.ratio.axhline(0, linewidth=1, alpha=0.5)
 
 # _________________________________________________________________
 # stuff copied from Meghan
