@@ -14,9 +14,6 @@ addons:
       - libblas-dev
       - liblapack-dev
 
-before_install:
-  - pip3 install -r requirements.txt
-
 script:
   - ./build-george.sh
   - ./plot-meghan.py data/MC.h5
