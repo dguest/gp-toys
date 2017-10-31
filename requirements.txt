@@ -1,3 +1,10 @@
 h5py >= 2.7.1
 numpy >= 1.13.3
-matplotlib
+matplotlib == 2.1.0
+pyyaml == 3.12
+pybind11 == 2.2.1
+jinja2 == 2.9.6
+scipy == 1.0.0
+iminuit == 1.2
+
+
