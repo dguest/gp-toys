@@ -14,6 +14,7 @@ def parse_args():
     parser = ArgumentParser(description=__doc__)
     d = dict(help='%(default)s')
     parser.add_argument('input_file')
+    parser.add_argument('signal_file', nargs='?')
     parser.add_argument('-e', '--output-file-extension', default='.pdf')
     parser.add_argument('-n', '--n-fits', type=int, default=10, **d)
     return parser.parse_args()
@@ -26,8 +27,6 @@ def run():
     from pygp.canvas import Canvas
 
     with File(args.input_file,'r') as h5file:
-        # h5file['Nominal']['mjj_Data_2015_3p57fb']
-        # dijetgamma_g85_2j65 Zprime_mjj_var
         x, y, xerr, yerr = get_xy_pts(
             h5file['dijetgamma_g85_2j65']['Zprime_mjj_var'])
 
@@ -40,7 +39,6 @@ def run():
     lnProb = logLike_minuit(x, y, xerr)
     min_likelihood, best_fit = fit_gp_minuit(20, lnProb)
 
-    t = np.linspace(np.min(x), np.max(x), 500)
     fit_pars = [best_fit[x] for x in FIT_PARS]
     with Canvas(f'points{ext}') as can:
         can.ax.errorbar(x, y, yerr=yerr, fmt='.')
@@ -50,22 +48,23 @@ def run():
     print(kernel_new.get_parameter_names())
     gp_new = george.GP(kernel_new, mean=Mean(fit_pars), fit_mean = True)
 
+    plot_gp(x, y, xerr, yerr, gp_new, ext=args.output_file_extension)
 
+def plot_gp(x, y, xerr, yerr, gp_new, ext):
+    from pygp.canvas import Canvas
+    t = np.linspace(np.min(x), np.max(x), 500)
     gp_new.compute(x, yerr)
     mu, cov = gp_new.predict(y, t)
     mu_x, cov_x = gp_new.predict(y, x)
     signif = (y - mu_x) / np.sqrt(np.diag(cov_x) + yerr**2)
-    fit_mean = gp_new.mean.get_value(x)
     fit_mean_smooth = gp_new.mean.get_value(t)
     std = np.sqrt(np.diag(cov))
 
-    ext = args.output_file_extension
     with Canvas(f'spectrum{ext}') as can:
         can.ax.errorbar(x, y, yerr=yerr, fmt='.')
         can.ax.set_yscale('log')
         # can.ax.set_ylim(1, can.ax.get_ylim()[1])
         can.ax.plot(t, mu, '-r')
-        # can.ax.plot(x, fit_mean, '.b')
         # can.ax.plot(t, fit_mean_smooth, '--b')
         can.ax.fill_between(t, mu - std, mu + std,
                             facecolor=(0, 1, 0, 0.5),
