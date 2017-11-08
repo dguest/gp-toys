@@ -20,6 +20,7 @@ def parse_args():
     return parser.parse_args()
 
 FIT_PARS = ['p0','p1','p2']
+FIT_RANGE = (200, 1500)
 
 def run():
     args = parse_args()
@@ -28,13 +29,8 @@ def run():
 
     with File(args.input_file,'r') as h5file:
         x, y, xerr, yerr = get_xy_pts(
-            h5file['dijetgamma_g85_2j65']['Zprime_mjj_var'])
-
-    valid_x = (x > 0) & (x < 1500)
-    valid_y = y > 0
-    valid = valid_x & valid_y
-    x, y = x[valid], y[valid]
-    xerr, yerr = xerr[valid], yerr[valid]
+            h5file['dijetgamma_g85_2j65']['Zprime_mjj_var'],
+            FIT_RANGE)
 
     lnProb = logLike_minuit(x, y, xerr)
     min_likelihood, best_fit = fit_gp_minuit(20, lnProb)
@@ -48,29 +44,47 @@ def run():
     print(kernel_new.get_parameter_names())
     gp_new = george.GP(kernel_new, mean=Mean(fit_pars), fit_mean = True)
 
-    plot_gp(x, y, xerr, yerr, gp_new, ext=args.output_file_extension)
+    ext = args.output_file_extension
+    gp_new.compute(x, yerr)
+    plot_gp(x, y, xerr, yerr, gp_new, name=f'spectrum{ext}')
 
-def plot_gp(x, y, xerr, yerr, gp_new, ext):
+    if not args.signal_file:
+        return
+
+    with File(args.signal_file,'r') as h5file:
+        x_sig, y_sig, xerr_sig, yerr_sig = get_xy_pts(
+            h5file['dijetgamma_g85_2j65']['Zprime_mjj_var'],
+            FIT_RANGE)
+        y_sig *= 1e5
+        yerr_sig *= 1e5
+        tot_error = (yerr**2 + yerr_sig**2)**(1/2)
+        plot_gp(x_sig, y + y_sig, xerr_sig, tot_error, gp_new,
+                name=f'with-signal{ext}', y_bg=y, yerr_bg=yerr)
+
+def plot_gp(x, y, xerr, yerr, gp_new, name, y_bg=None, yerr_bg=None):
     from pygp.canvas import Canvas
     t = np.linspace(np.min(x), np.max(x), 500)
-    gp_new.compute(x, yerr)
     mu, cov = gp_new.predict(y, t)
     mu_x, cov_x = gp_new.predict(y, x)
     signif = (y - mu_x) / np.sqrt(np.diag(cov_x) + yerr**2)
     fit_mean_smooth = gp_new.mean.get_value(t)
     std = np.sqrt(np.diag(cov))
 
-    with Canvas(f'spectrum{ext}') as can:
-        can.ax.errorbar(x, y, yerr=yerr, fmt='.')
+    with Canvas(name) as can:
+        can.ax.errorbar(x, y, yerr=yerr, fmt='.', label='sig + bg')
+        if y_bg is not None:
+            can.ax.errorbar(x, y_bg, yerr=yerr_bg, fmt='.', label='bg')
         can.ax.set_yscale('log')
-        # can.ax.set_ylim(1, can.ax.get_ylim()[1])
         can.ax.plot(t, mu, '-r')
-        # can.ax.plot(t, fit_mean_smooth, '--b')
         can.ax.fill_between(t, mu - std, mu + std,
                             facecolor=(0, 1, 0, 0.5),
-                            zorder=5, label='err = 1')
+                            zorder=5, label=r'GP error = $1\sigma$')
+        can.ax.legend(framealpha=0)
+        can.ax.set_ylabel('events')
         can.ratio.stem(x, signif, markerfmt='.', basefmt=' ')
         can.ratio.axhline(0, linewidth=1, alpha=0.5)
+        can.ratio.set_xlabel(r'$m_{jj}$ [GeV]', ha='right', x=0.98)
+        can.ratio.set_ylabel('significance')
 
 # _________________________________________________________________
 # stuff copied from Meghan
@@ -162,14 +176,19 @@ class Mean():
 def get_kernel(Amp, decay, length, power, sub):
     return Amp * MyDijetKernelSimp(a = decay, b = length, c = power, d = sub)
 
-def get_xy_pts(group):
+def get_xy_pts(group, x_range=None):
     assert 'hist_type' in group.attrs
     vals = np.asarray(group['values'])
     edges = np.asarray(group['edges'])
     errors = np.asarray(group['errors'])
     center = (edges[:-1] + edges[1:]) / 2
     widths = np.diff(edges)
-    return center, vals[1:-1], widths, errors[1:-1]
+
+    if x_range is not None:
+        low, high = x_range
+        ok = (center > low) & (center < high)
+
+    return center[ok], vals[1:-1][ok], widths[ok], errors[1:-1][ok]
 
 if __name__ == '__main__':
     run()
