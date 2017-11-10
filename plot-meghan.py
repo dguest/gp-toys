@@ -9,6 +9,7 @@ from h5py import File
 import numpy as np
 import george
 from george.kernels import MyDijetKernelSimp
+import json
 
 def parse_args():
     parser = ArgumentParser(description=__doc__)
@@ -17,6 +18,9 @@ def parse_args():
     parser.add_argument('signal_file', nargs='?')
     parser.add_argument('-e', '--output-file-extension', default='.pdf')
     parser.add_argument('-n', '--n-fits', type=int, default=10, **d)
+    par_opts = parser.add_mutually_exclusive_group()
+    par_opts.add_argument('-s', '--save-pars')
+    par_opts.add_argument('-l', '--load-pars')
     return parser.parse_args()
 
 FIT_PARS = ['p0','p1','p2']
@@ -32,8 +36,15 @@ def run():
             h5file['dijetgamma_g85_2j65']['Zprime_mjj_var'],
             FIT_RANGE)
 
-    lnProb = logLike_minuit(x, y, xerr)
-    min_likelihood, best_fit = fit_gp_minuit(20, lnProb)
+    if args.load_pars:
+        with open(args.load_pars, 'r') as pars_file:
+            best_fit = json.load(pars_file)
+    else:
+        lnProb = logLike_minuit(x, y, xerr)
+        _, best_fit = fit_gp_minuit(20, lnProb)
+    if args.save_pars:
+        with open(args.save_pars, 'w') as pars_file:
+            json.dump(best_fit, pars_file, indent=2)
 
     fit_pars = [best_fit[x] for x in FIT_PARS]
     with Canvas(f'points{ext}') as can:
@@ -41,7 +52,6 @@ def run():
         can.ax.set_yscale('log')
     kargs = {x:y for x, y in best_fit.items() if x not in FIT_PARS}
     kernel_new = get_kernel(**kargs)
-    print(kernel_new.get_parameter_names())
     gp_new = george.GP(kernel_new, mean=Mean(fit_pars), fit_mean = True)
 
     ext = args.output_file_extension
