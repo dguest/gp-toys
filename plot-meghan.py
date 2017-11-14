@@ -40,7 +40,7 @@ def run():
         with open(args.load_pars, 'r') as pars_file:
             best_fit = json.load(pars_file)
     else:
-        lnProb = logLike_minuit(x, y, xerr)
+        lnProb = logLike_minuit(x, y, yerr)
         _, best_fit = fit_gp_minuit(20, lnProb)
     if args.save_pars:
         with open(args.save_pars, 'w') as pars_file:
@@ -100,17 +100,17 @@ def plot_gp(x, y, xerr, yerr, gp_new, name, y_bg=None, yerr_bg=None):
 # stuff copied from Meghan
 
 class logLike_minuit:
-    def __init__(self, x, y, xerr):
+    def __init__(self, x, y, yerr):
         self.x = x
         self.y = y
-        self.xerr = xerr
+        self.yerr = yerr
     def __call__(self, Amp, decay, length, power, sub, p0, p1, p2):
         kernel = get_kernel(Amp, decay, length, power, sub)
         mean = Mean((p0,p1,p2))
         gp = george.GP(kernel, mean=mean, fit_mean = True)
         try:
-            gp.compute(self.x, np.sqrt(self.y))
-            return -gp.lnlikelihood(self.y, self.xerr)
+            gp.compute(self.x, self.yerr)
+            return -gp.lnlikelihood(self.y)
         except:
             return np.inf
 
