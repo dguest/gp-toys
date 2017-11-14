@@ -125,7 +125,6 @@ GP_PARS = ['amp', 'decay', 'length', 'power', 'sub']
 ALL_PARS = GP_PARS + FIT_PARS
 
 def fit_gp_minuit(num, lnprob):
-    from iminuit import Minuit
     from scipy.optimize import minimize
 
     min_likelihood = np.inf
@@ -169,21 +168,9 @@ def fit_gp_minuit(num, lnprob):
             lnprob2, [init[x] for x in ALL_PARS],
             bounds=[bound[x] for x in ALL_PARS]).x
 
-        minuit_pars = {x: init[x] for x in ALL_PARS}
-        for par in GP_PARS:
-            minuit_pars['error_' + par] = 1e1
-        for par in FIT_PARS:
-            minuit_pars['error_' + par] = 1e-2
-        minuit_pars.update({'limit_' + x: bound[x] for x in ALL_PARS})
-        m = Minuit(lnprob, throw_nan = True, pedantic = True,
-                   print_level = 0, errordef = 0.5,
-                   **minuit_pars)
-        m.migrad()
-        # print(m.fval, lnprob2(result))
-        # print(m.values, result)
         new_llh = lnprob2(result)
         par_dict = {x: result[n] for n, x in enumerate(ALL_PARS)}
-        if new_llh < min_likelihood and m.fval != 0.0:
+        if new_llh < min_likelihood:
             min_likelihood = new_llh
             best_fit_params = par_dict
     print("min LL", min_likelihood)
