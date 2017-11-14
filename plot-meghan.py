@@ -17,11 +17,12 @@ def parse_args():
     parser.add_argument('input_file')
     parser.add_argument('signal_file', nargs='?')
     parser.add_argument('-e', '--output-file-extension', default='.pdf')
-    parser.add_argument('-n', '--n-fits', type=int, default=10, **d)
+    parser.add_argument('-n', '--n-fits', type=int, default=5, **d)
     par_opts = parser.add_mutually_exclusive_group()
     par_opts.add_argument('-s', '--save-pars')
     par_opts.add_argument('-l', '--load-pars')
-    par_opts.add_argument('-m', '--signal-multiplier', type=float, default=1)
+    par_opts.add_argument('-m', '--signal-multiplier', type=float,
+                          default=1, nargs='?', const=5)
     return parser.parse_args()
 
 FIT_PARS = ['p0','p1','p2']
@@ -85,7 +86,7 @@ def plot_gp(x, y, xerr, yerr, gp_new, name, y_bg=None, yerr_bg=None,
 
     with Canvas(name) as can:
         sm = signal_multiplier
-        sig_label = f'sig * {sm} + bg' if sm != 1.0 else 'sig + bg'
+        sig_label = f'sig * {sm:.3g} + bg' if sm != 1.0 else 'sig + bg'
         can.ax.errorbar(x, y, yerr=yerr, fmt='.', label=sig_label)
         if y_bg is not None:
             can.ax.errorbar(x, y_bg, yerr=yerr_bg, fmt='.', label='bg')
@@ -116,7 +117,7 @@ class logLike_minuit:
         gp = george.GP(kernel, mean=mean, fit_mean = True)
         try:
             gp.compute(self.x, self.yerr)
-            return -gp.lnlikelihood(self.y)
+            return -gp.log_likelihood(self.y)
         except:
             return np.inf
 
@@ -167,7 +168,6 @@ def fit_gp_minuit(num, lnprob):
                    limit_p1 = bound('p1', neg=True),
                    limit_p2 = bound('p2', neg=True))
         m.migrad()
-        print(m.fval)
         if m.fval < min_likelihood and m.fval != 0.0:
             min_likelihood = m.fval
             best_fit_params = m.values
