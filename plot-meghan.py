@@ -21,10 +21,11 @@ def parse_args():
     par_opts = parser.add_mutually_exclusive_group()
     par_opts.add_argument('-s', '--save-pars')
     par_opts.add_argument('-l', '--load-pars')
+    par_opts.add_argument('-m', '--signal-multiplier', type=float, default=1)
     return parser.parse_args()
 
 FIT_PARS = ['p0','p1','p2']
-FIT_RANGE = (200, 1500)
+FIT_RANGE = (0, 1500)
 
 def run():
     args = parse_args()
@@ -65,13 +66,15 @@ def run():
         x_sig, y_sig, xerr_sig, yerr_sig = get_xy_pts(
             h5file['dijetgamma_g85_2j65']['Zprime_mjj_var'],
             FIT_RANGE)
-        y_sig *= 1e5
-        yerr_sig *= 1e5
+        y_sig *= args.signal_multiplier
+        yerr_sig *= args.signal_multiplier
         tot_error = (yerr**2 + yerr_sig**2)**(1/2)
         plot_gp(x_sig, y + y_sig, xerr_sig, tot_error, gp_new,
-                name=f'with-signal{ext}', y_bg=y, yerr_bg=yerr)
+                name=f'with-signal{ext}', y_bg=y, yerr_bg=yerr,
+                signal_multiplier=args.signal_multiplier)
 
-def plot_gp(x, y, xerr, yerr, gp_new, name, y_bg=None, yerr_bg=None):
+def plot_gp(x, y, xerr, yerr, gp_new, name, y_bg=None, yerr_bg=None,
+            signal_multiplier=1.0):
     from pygp.canvas import Canvas
     t = np.linspace(np.min(x), np.max(x), 500)
     mu, cov = gp_new.predict(y, t)
@@ -81,11 +84,14 @@ def plot_gp(x, y, xerr, yerr, gp_new, name, y_bg=None, yerr_bg=None):
     std = np.sqrt(np.diag(cov))
 
     with Canvas(name) as can:
-        can.ax.errorbar(x, y, yerr=yerr, fmt='.', label='sig + bg')
+        sm = signal_multiplier
+        sig_label = f'sig * {sm} + bg' if sm != 1.0 else 'sig + bg'
+        can.ax.errorbar(x, y, yerr=yerr, fmt='.', label=sig_label)
         if y_bg is not None:
             can.ax.errorbar(x, y_bg, yerr=yerr_bg, fmt='.', label='bg')
         can.ax.set_yscale('log')
         can.ax.plot(t, mu, '-r')
+        # can.ax.plot(t, fit_mean_smooth, '-k', label='fit function')
         can.ax.fill_between(t, mu - std, mu + std,
                             facecolor=(0, 1, 0, 0.5),
                             zorder=5, label=r'GP error = $1\sigma$')
