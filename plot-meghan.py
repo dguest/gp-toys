@@ -111,8 +111,8 @@ class logLike_minuit:
         self.x = x
         self.y = y
         self.yerr = yerr
-    def __call__(self, Amp, decay, length, power, sub, p0, p1, p2):
-        kernel = get_kernel(Amp, decay, length, power, sub)
+    def __call__(self, amp, decay, length, power, sub, p0, p1, p2):
+        kernel = get_kernel(amp, decay, length, power, sub)
         mean = Mean((p0,p1,p2))
         gp = george.GP(kernel, mean=mean, fit_mean = True)
         try:
@@ -121,8 +121,12 @@ class logLike_minuit:
         except:
             return np.inf
 
+GP_PARS = ['amp', 'decay', 'length', 'power', 'sub']
+ALL_PARS = GP_PARS + FIT_PARS
+
 def fit_gp_minuit(num, lnprob):
     from iminuit import Minuit
+    from scipy.optimize import minimize
 
     min_likelihood = np.inf
     best_fit_params = (0, 0, 0, 0, 0)
@@ -132,45 +136,56 @@ def fit_gp_minuit(num, lnprob):
         'p1': 0.46257148564598083,
         'p2': 0.8901612464370032
     }
-    def bound(par, neg=False):
+    def get_bound(par, neg=False):
         if neg:
             return (-2.0*guesses[par], 2.0*guesses[par])
         return (guesses[par] * 0.5, guesses[par] * 2.0)
     for i in range(num):
-        iamp = np.random.random() * 2*guesses['amp']
-        idecay = np.random.random() * 0.64
-        ilength = np.random.random() * 5e5
-        ipower = np.random.random() * 1.0
-        isub = np.random.random() * 1.0
-        ip0 = np.random.random() * guesses['p0'] * 2
-        ip1 = np.random.random() * guesses['p1'] * 2
-        ip2 = np.random.random() * guesses['p2'] * 2
+        init = {
+            'amp': np.random.random() * 2*guesses['amp'],
+            'decay': np.random.random() * 0.64,
+            'length': np.random.random() * 5e5,
+            'power': np.random.random() * 1.0,
+            'sub': np.random.random() * 1.0,
+            'p0': np.random.random() * guesses['p0'] * 2,
+            'p1': np.random.random() * guesses['p1'] * 2,
+            'p2': np.random.random() * guesses['p2'] * 2
+        }
+        bound = dict(
+            amp = get_bound('amp'),
+            decay = (10, 1000),
+            length = (100, 1e8),
+            power = (0.01, 1000),
+            sub = (0.01, 1e6),
+            p0 = get_bound('p0', neg=False),
+            p1 = get_bound('p1', neg=True),
+            p2 = get_bound('p2', neg=True)
+        )
+
+        def lnprob2(x):
+            return lnprob(*x)
+
+        result = minimize(
+            lnprob2, [init[x] for x in ALL_PARS],
+            bounds=[bound[x] for x in ALL_PARS]).x
+
+        minuit_pars = {x: init[x] for x in ALL_PARS}
+        for par in GP_PARS:
+            minuit_pars['error_' + par] = 1e1
+        for par in FIT_PARS:
+            minuit_pars['error_' + par] = 1e-2
+        minuit_pars.update({'limit_' + x: bound[x] for x in ALL_PARS})
         m = Minuit(lnprob, throw_nan = True, pedantic = True,
                    print_level = 0, errordef = 0.5,
-                   Amp = iamp,
-                   decay = idecay,
-                   length = ilength,
-                   power = ipower,
-                   sub = isub,
-                   p0 = ip0, p1 = ip1, p2 = ip2,
-                   error_Amp = 1e1,
-                   error_decay = 1e1,
-                   error_length = 1e1,
-                   error_power = 1e1,
-                   error_sub = 1e1,
-                   error_p0 = 1e-2, error_p1 = 1e-2, error_p2 = 1e-2,
-                   limit_Amp = bound('amp'),
-                   limit_decay = (0.01, 1000),
-                   limit_length = (100, 1e8),
-                   limit_power = (0.01, 1000),
-                   limit_sub = (0.01, 1e6),
-                   limit_p0 = bound('p0', neg=False),
-                   limit_p1 = bound('p1', neg=True),
-                   limit_p2 = bound('p2', neg=True))
+                   **minuit_pars)
         m.migrad()
-        if m.fval < min_likelihood and m.fval != 0.0:
-            min_likelihood = m.fval
-            best_fit_params = m.values
+        # print(m.fval, lnprob2(result))
+        # print(m.values, result)
+        new_llh = lnprob2(result)
+        par_dict = {x: result[n] for n, x in enumerate(ALL_PARS)}
+        if new_llh < min_likelihood and m.fval != 0.0:
+            min_likelihood = new_llh
+            best_fit_params = par_dict
     print("min LL", min_likelihood)
     print(f'best fit params {best_fit_params}')
     return min_likelihood, best_fit_params
@@ -189,8 +204,8 @@ class Mean():
         # print(vals)
         return vals
 
-def get_kernel(Amp, decay, length, power, sub):
-    return Amp * MyDijetKernelSimp(a = decay, b = length, c = power, d = sub)
+def get_kernel(amp, decay, length, power, sub):
+    return amp * MyDijetKernelSimp(a = decay, b = length, c = power, d = sub)
 
 def get_xy_pts(group, x_range=None):
     assert 'hist_type' in group.attrs
