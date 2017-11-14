@@ -43,7 +43,7 @@ def run():
             best_fit = json.load(pars_file)
     else:
         lnProb = logLike_minuit(x, y, yerr)
-        _, best_fit = fit_gp_minuit(20, lnProb)
+        _, best_fit = fit_gp_minuit(args.n_fits, lnProb)
     if args.save_pars:
         with open(args.save_pars, 'w') as pars_file:
             json.dump(best_fit, pars_file, indent=2)
